@@ -1,0 +1,12 @@
+# 本项目刻意只用 Python 标准库（imaplib / smtplib / sqlite3 / urllib / email / zoneinfo），
+# 下面两个都是可选的增强项，不装也能正常运行。
+#
+#   pip install -r requirements.txt
+
+# 可选：IANA 时区数据库。Windows 上 Python 自带 zoneinfo 但没有 tzdata，
+# 不装的话 Asia/Shanghai 会退化成固定 +08:00 —— 对国内场景没有影响，
+# 但换成有夏令时的时区（如 America/New_York）就会算错一小时。
+tzdata>=2024.1
+
+# 可选：把 HTML 邮件正文转成纯文本。不装则使用内置的正则兜底实现。
+beautifulsoup4>=4.12
