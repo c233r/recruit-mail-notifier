@@ -4,8 +4,8 @@ rem  Recruit mail notifier - autostart manager (cmd wrapper)
 rem
 rem  Windows blocks .ps1 files by default, so running the script
 rem  directly fails with one of:
-rem     "... 禁止运行脚本"                    (ExecutionPolicy = Restricted)
-rem     "... is not digitally signed"          (ExecutionPolicy = AllSigned/RemoteSigned)
+rem     "... running scripts is disabled"      (ExecutionPolicy = Restricted)
+rem     "... is not digitally signed"          (ExecutionPolicy = AllSigned / RemoteSigned)
 rem
 rem  This wrapper re-invokes it with -ExecutionPolicy Bypass,
 rem  which applies to THIS PROCESS ONLY.  It does not change any
