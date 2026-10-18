@@ -545,21 +545,31 @@ python -m unittest discover -s tests -t .
 
 提供 Windows 计划任务方案（登录后延迟 10 分钟运行一次）：
 
-```powershell
-# 注册并启用（不需要管理员权限）
-powershell -File tools\install_autostart.ps1
+```bat
+:: 注册并启用（不需要管理员权限）
+tools\install_autostart.cmd
 
-# 查看状态
-powershell -File tools\install_autostart.ps1 -Status
+:: 查看状态
+tools\install_autostart.cmd -Status
 
-# 临时停用 / 重新启用 / 彻底删除
-powershell -File tools\install_autostart.ps1 -Disable
-powershell -File tools\install_autostart.ps1 -Enable
-powershell -File tools\install_autostart.ps1 -Remove
+:: 临时停用 / 重新启用 / 彻底删除
+tools\install_autostart.cmd -Disable
+tools\install_autostart.cmd -Enable
+tools\install_autostart.cmd -Remove
 
-# 自定义启动延迟（分钟，默认 10）
-powershell -File tools\install_autostart.ps1 -DelayMinutes 20
+:: 自定义启动延迟（分钟，默认 10）
+tools\install_autostart.cmd -DelayMinutes 20
 ```
+
+> **为什么用 `.cmd` 而不是直接跑 `.ps1`？**
+> Windows 默认禁止运行 PowerShell 脚本。别人 clone 下来直接跑 `.ps1` 会报
+> 「**在此系统上禁止运行脚本**」或「**未对文件进行数字签名**」。
+> `install_autostart.cmd` 只是用 `-ExecutionPolicy Bypass` 转发一次调用 ——
+> **只对这一个进程生效，不会修改系统的任何安全设置**。如果你更习惯手动调用：
+>
+> ```powershell
+> powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_autostart.ps1 -Status
+> ```
 
 注册后的任务：
 
@@ -627,6 +637,33 @@ Linux / macOS 可以用 `cron`：
 <summary><b>支持 Gmail / Outlook 吗？</b></summary>
 
 支持。改 `mail.ini` 里的 `host` / `port`，并在 `.env` 里填对应的账号密码（Gmail 需要「应用专用密码」）。链接模板可以用 README 上面给的现成写法，能得到真正可点击的「打开原邮件」链接。
+</details>
+
+<details>
+<summary><b>别人跑 <code>tools\install_autostart.ps1</code> 报「禁止运行脚本 / 未对文件进行数字签名」？</b></summary>
+
+那是 Windows 的 PowerShell **执行策略**（`ExecutionPolicy`）在拦脚本，不是脚本本身的问题。Windows 客户端默认就是 `Restricted`，任何 `.ps1` 都不许跑。
+
+**用附带的 `.cmd` 包装器即可** —— 它只用 `-ExecutionPolicy Bypass` 给当前进程放行，**不改系统设置**：
+
+```bat
+tools\install_autostart.cmd -Status
+```
+
+坚持直接调 `.ps1` 的三种写法：
+
+```powershell
+# ① 单次放行（推荐，不落盘）
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_autostart.ps1
+
+# ② 只放行当前这个会话
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+# ③ 只解开这个文件的「来自 Internet」标记（从 ZIP 解压后常见）
+Unblock-File .\tools\install_autostart.ps1
+```
+
+⚠️ 不建议为了一个脚本去改全局执行策略（`Set-ExecutionPolicy` 不带 `-Scope` 就是改全局）。
 </details>
 
 <details>
