@@ -104,6 +104,35 @@ def _as_float(value: Optional[str], default: float) -> float:
         return default
 
 
+def _env_value(name: str) -> Optional[str]:
+    """读环境变量覆盖值。未设置、或只有空白，都视为「没设置」。"""
+    if not name:
+        return None
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def _cfg(
+    cp: configparser.ConfigParser,
+    section: str,
+    key: str,
+    env_name: str,
+    default: Optional[str] = None,
+) -> Optional[str]:
+    """配置取值优先级：环境变量 > INI > 代码默认值。
+
+    有了它，个人化的邮件设置都可以放进 .env（已被 .gitignore 忽略），
+    仓库里的 mail.ini 就能保持通用模板，不会因为填了自己的邮箱而变脏。
+    """
+    override = _env_value(env_name)
+    if override is not None:
+        return override
+    return _opt(cp, section, key) or default
+
+
 def _as_list(value: Optional[str]) -> List[str]:
     if not value:
         return []
@@ -289,7 +318,13 @@ class AppConfig:
     project_root: Path
 
     def tzinfo(self, logger: Any = None) -> tzinfo:
-        return resolve_timezone(os.environ.get("RECRUIT_TZ") or self.notify.timezone, logger)
+        # RECRUIT_NOTIFY_TIMEZONE 是新名字；RECRUIT_TZ 作为旧名字继续兼容
+        name = (
+            os.environ.get("RECRUIT_NOTIFY_TIMEZONE")
+            or os.environ.get("RECRUIT_TZ")
+            or self.notify.timezone
+        )
+        return resolve_timezone(name, logger)
 
 
 def load_rules(path: Optional[Path] = None) -> Dict[str, Any]:
@@ -332,70 +367,130 @@ def load_config(
         ),
     )
 
-    imap_username = _opt(mail_cp, "imap", "username") or get_secret(
-        _opt(mail_cp, "imap", "user_env") or ""
+    imap_username = (
+        _env_value("RECRUIT_IMAP_USER")
+        or _opt(mail_cp, "imap", "username")
+        or get_secret(_opt(mail_cp, "imap", "user_env") or "")
     )
     imap = ImapConfig(
-        enabled=_as_bool(_opt(mail_cp, "imap", "enabled"), True),
-        host=_opt(mail_cp, "imap", "host") or "",
-        port=_as_int(_opt(mail_cp, "imap", "port"), 993),
-        use_ssl=_as_bool(_opt(mail_cp, "imap", "use_ssl"), True),
+        enabled=_as_bool(_cfg(mail_cp, "imap", "enabled", "RECRUIT_IMAP_ENABLED"), True),
+        host=_cfg(mail_cp, "imap", "host", "RECRUIT_IMAP_HOST") or "",
+        port=_as_int(_cfg(mail_cp, "imap", "port", "RECRUIT_IMAP_PORT"), 993),
+        use_ssl=_as_bool(_cfg(mail_cp, "imap", "use_ssl", "RECRUIT_IMAP_SSL"), True),
         username=imap_username,
         password=get_secret(_opt(mail_cp, "imap", "password_env") or ""),
-        mailbox=_opt(mail_cp, "imap", "mailbox") or "INBOX",
-        recipient_aliases=_as_list(_opt(mail_cp, "imap", "recipient_aliases")),
-        initial_lookback_days=_as_int(_opt(mail_cp, "imap", "initial_lookback_days"), 7),
+        mailbox=_cfg(mail_cp, "imap", "mailbox", "RECRUIT_IMAP_MAILBOX") or "INBOX",
+        recipient_aliases=_as_list(
+            _cfg(mail_cp, "imap", "recipient_aliases", "RECRUIT_IMAP_RECIPIENT_ALIASES")
+        ),
+        initial_lookback_days=_as_int(
+            _cfg(mail_cp, "imap", "initial_lookback_days", "RECRUIT_IMAP_LOOKBACK_DAYS"), 7
+        ),
         fetch_batch_size=_as_int(_opt(mail_cp, "imap", "fetch_batch_size"), 200),
         timeout_seconds=_as_int(_opt(mail_cp, "imap", "timeout_seconds"), 30),
-        readonly=_as_bool(_opt(mail_cp, "imap", "readonly"), True),
-        webmail_url_template=_opt(mail_cp, "imap", "webmail_url_template") or "",
+        readonly=_as_bool(_cfg(mail_cp, "imap", "readonly", "RECRUIT_IMAP_READONLY"), True),
+        webmail_url_template=_cfg(
+            mail_cp, "imap", "webmail_url_template", "RECRUIT_IMAP_WEBMAIL_URL_TEMPLATE"
+        ) or "",
         max_age_days=retention.max_age_days,
-        fetch_mode=(_opt(mail_cp, "imap", "fetch_mode") or "uid").strip().lower(),
-        archive_folder=(_opt(mail_cp, "imap", "archive_folder") or "").strip(),
+        fetch_mode=(
+            _cfg(mail_cp, "imap", "fetch_mode", "RECRUIT_IMAP_FETCH_MODE") or "uid"
+        ).strip().lower(),
+        archive_folder=(
+            _cfg(mail_cp, "imap", "archive_folder", "RECRUIT_IMAP_ARCHIVE_FOLDER") or ""
+        ).strip(),
     )
 
-    smtp_username = _opt(mail_cp, "smtp", "username") or get_secret(
-        _opt(mail_cp, "smtp", "user_env") or ""
+    smtp_username = (
+        _env_value("RECRUIT_SMTP_USER")
+        or _opt(mail_cp, "smtp", "username")
+        or get_secret(_opt(mail_cp, "smtp", "user_env") or "")
     )
     smtp = SmtpConfig(
-        enabled=_as_bool(_opt(mail_cp, "smtp", "enabled"), True),
-        host=_opt(mail_cp, "smtp", "host") or "",
-        port=_as_int(_opt(mail_cp, "smtp", "port"), 465),
-        use_ssl=_as_bool(_opt(mail_cp, "smtp", "use_ssl"), True),
+        enabled=_as_bool(_cfg(mail_cp, "smtp", "enabled", "RECRUIT_SMTP_ENABLED"), True),
+        host=_cfg(mail_cp, "smtp", "host", "RECRUIT_SMTP_HOST") or "",
+        port=_as_int(_cfg(mail_cp, "smtp", "port", "RECRUIT_SMTP_PORT"), 465),
+        use_ssl=_as_bool(_cfg(mail_cp, "smtp", "use_ssl", "RECRUIT_SMTP_SSL"), True),
         username=smtp_username,
         password=get_secret(_opt(mail_cp, "smtp", "password_env") or ""),
-        from_addr=_opt(mail_cp, "smtp", "from_addr") or "",
-        from_name=_opt(mail_cp, "smtp", "from_name") or "招聘邮件助手",
+        from_addr=_cfg(mail_cp, "smtp", "from_addr", "RECRUIT_SMTP_FROM") or "",
+        from_name=_cfg(mail_cp, "smtp", "from_name", "RECRUIT_SMTP_FROM_NAME")
+        or "招聘邮件助手",
         max_retries=_as_int(_opt(mail_cp, "smtp", "max_retries"), 3),
         retry_backoff_seconds=_as_int(_opt(mail_cp, "smtp", "retry_backoff_seconds"), 60),
     )
 
     notify = NotifyConfig(
-        poll_interval_minutes=max(1, _as_int(_opt(mail_cp, "notify", "poll_interval_minutes"), 10)),
-        daily_summary_time=_opt(mail_cp, "notify", "daily_summary_time") or "10:00",
-        timezone=_opt(mail_cp, "notify", "timezone") or "Asia/Shanghai",
-        recipients=_as_list(_opt(mail_cp, "notify", "recipients")),
-        cc=_as_list(_opt(mail_cp, "notify", "cc")),
-        subject_template=_opt(mail_cp, "notify", "subject_template")
-        or "【招聘汇总】{date} 共 {count} 封待处理",
-        max_items_per_summary=_as_int(_opt(mail_cp, "notify", "max_items_per_summary"), 50),
-        send_when_empty=_as_bool(_opt(mail_cp, "notify", "send_when_empty"), False),
-        categories=_as_list(_opt(mail_cp, "notify", "categories")) or ["interview", "written_test"],
+        poll_interval_minutes=max(
+            1, _as_int(_cfg(mail_cp, "notify", "poll_interval_minutes", "RECRUIT_NOTIFY_POLL_MINUTES"), 10)
+        ),
+        daily_summary_time=_cfg(
+            mail_cp, "notify", "daily_summary_time", "RECRUIT_NOTIFY_SUMMARY_TIME"
+        ) or "10:00",
+        timezone=_cfg(mail_cp, "notify", "timezone", "RECRUIT_NOTIFY_TIMEZONE")
+        or "Asia/Shanghai",
+        recipients=_as_list(_cfg(mail_cp, "notify", "recipients", "RECRUIT_NOTIFY_RECIPIENTS")),
+        cc=_as_list(_cfg(mail_cp, "notify", "cc", "RECRUIT_NOTIFY_CC")),
+        subject_template=_cfg(
+            mail_cp, "notify", "subject_template", "RECRUIT_NOTIFY_SUBJECT_TEMPLATE"
+        ) or "【招聘汇总】{date} 共 {count} 封待处理",
+        max_items_per_summary=_as_int(
+            _cfg(mail_cp, "notify", "max_items_per_summary", "RECRUIT_NOTIFY_MAX_ITEMS"), 50
+        ),
+        send_when_empty=_as_bool(
+            _cfg(mail_cp, "notify", "send_when_empty", "RECRUIT_NOTIFY_SEND_WHEN_EMPTY"), False
+        ),
+        categories=_as_list(
+            _cfg(mail_cp, "notify", "categories", "RECRUIT_NOTIFY_CATEGORIES")
+        ) or ["interview", "written_test"],
         include_pending_review_in_summary=_as_bool(
-            _opt(mail_cp, "notify", "include_pending_review_in_summary"), True
+            _cfg(
+                mail_cp,
+                "notify",
+                "include_pending_review_in_summary",
+                "RECRUIT_NOTIFY_INCLUDE_PENDING",
+            ),
+            True,
         ),
         reply_completion_enabled=_as_bool(
-            _opt(mail_cp, "notify", "reply_completion_enabled"), True
+            _cfg(mail_cp, "notify", "reply_completion_enabled", "RECRUIT_NOTIFY_REPLY_ENABLED"),
+            True,
         ),
-        reply_allowed_senders=_as_list(_opt(mail_cp, "notify", "reply_allowed_senders")),
-        poll_before_summary=_as_bool(_opt(mail_cp, "notify", "poll_before_summary"), True),
+        reply_allowed_senders=_as_list(
+            _cfg(
+                mail_cp,
+                "notify",
+                "reply_allowed_senders",
+                "RECRUIT_NOTIFY_REPLY_ALLOWED_SENDERS",
+            )
+        ),
+        poll_before_summary=_as_bool(
+            _cfg(
+                mail_cp, "notify", "poll_before_summary", "RECRUIT_NOTIFY_POLL_BEFORE_SUMMARY"
+            ),
+            True,
+        ),
         push_only_when_changed=_as_bool(
-            _opt(mail_cp, "notify", "push_only_when_changed"), True
+            _cfg(
+                mail_cp,
+                "notify",
+                "push_only_when_changed",
+                "RECRUIT_NOTIFY_PUSH_ONLY_WHEN_CHANGED",
+            ),
+            True,
         ),
         remind_unfinished_daily=_as_bool(
-            _opt(mail_cp, "notify", "remind_unfinished_daily"), True
+            _cfg(
+                mail_cp,
+                "notify",
+                "remind_unfinished_daily",
+                "RECRUIT_NOTIFY_REMIND_UNFINISHED",
+            ),
+            True,
         ),
-        sort_by=(_opt(mail_cp, "notify", "sort_by") or "deadline").strip().lower(),
+        sort_by=(
+            _cfg(mail_cp, "notify", "sort_by", "RECRUIT_NOTIFY_SORT_BY") or "deadline"
+        ).strip().lower(),
     )
 
     classifier = ClassifierConfig(

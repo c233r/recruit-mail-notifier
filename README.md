@@ -235,17 +235,26 @@ RECRUIT_LLM_API_KEY=sk-xxxxxxxx
 
 ### 3. 修改邮件配置
 
-编辑 `config/mail.ini`，至少改这几项：
+**只改 `.env` 就够了。** 所有个人化的邮件设置都可以用环境变量覆盖：
+
+```
+环境变量（.env）  >  config/mail.ini  >  代码默认值
+```
+
+所以 `config/mail.ini` 就是一份**通用模板**，你不用动它 —— 也就不会因为填了自己的邮箱而让 `git status` 变脏。
+
+`.env` 里最少填这五项：
 
 ```ini
-[imap]
-host = imap.qq.com              # 换成你的邮箱服务商
-username =                      # 留空则从 RECRUIT_IMAP_USER 读
-
-[notify]
-recipients = your_account@qq.com   # 汇总邮件发给谁
-timezone = Asia/Shanghai
+RECRUIT_IMAP_USER=your_account@qq.com
+RECRUIT_IMAP_PASSWORD=你的IMAP授权码
+RECRUIT_SMTP_USER=your_account@qq.com
+RECRUIT_SMTP_PASSWORD=你的SMTP授权码
+RECRUIT_NOTIFY_RECIPIENTS=your_account@qq.com
 ```
+
+想换服务商、开归档、关掉「无变化不推送」等等，都在 `.env` 里取消对应行的注释即可 ——
+完整的可覆盖项见 [`.env.example`](.env.example)，每一项都有中文说明。
 
 ### 4. 检查配置
 
@@ -276,7 +285,9 @@ python main.py run --dry-run      # 汇总写到 logs/outbox/，不发信
 
 两个文件都是**每次运行重新读盘**（热加载），改完保存即生效，不需要重启。
 
-### `config/mail.ini` —— 邮件相关
+> 绝大多数情况下你**不需要改这个文件**：下面每一项都能用 `.env` 里的环境变量覆盖
+> （优先级：环境变量 > INI > 默认值）。完整变量名见 [`.env.example`](.env.example)。
+> 这里的值只在你没有设置对应环境变量时才生效。
 
 | 段落 | 关键项 | 说明 |
 | --- | --- | --- |
